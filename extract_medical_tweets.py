@@ -166,7 +166,7 @@ if __name__ == '__main__':
                         help='Path to a .tsv.gz file containing tweet IDs in the first column')
     parser.add_argument('out', type=str,
                         help='Path to the output directory')
-    parser.add_argument('--num_workers', type=int, help='Number of parallel workers', default=3,
+    parser.add_argument('--num_workers', type=int, help='Number of parallel workers', default=1,
                         dest='num_workers')
     parser.add_argument('--worker', type=int, help='Index of this worker (0 to num_workers)',
                         default=0, dest='worker')
