@@ -136,12 +136,13 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
         been completed in a prior run).
     batch_size: Number of tweets to process in each batch.
     """
-    # Get Twarc credentials from .twarc
 
+    # Get Twarc credentials from .twarc
     with open(credentials_path, "r") as file:
         lines = file.readlines()
         keys = [line.strip().split(" = ")[1] for line in lines[1:] if line.strip()]
     t = twarc.Twarc(*keys, app_auth=True)
+
     for batch_index, batch in read_tweet_ids(tweet_ids_filename, num_workers, worker_index,
                                              skip_batches, batch_size=batch_size):
         print("Worker {}, batch index {}".format(worker_index, batch_index))
@@ -150,6 +151,10 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
         for i, json_tweet in enumerate(t.hydrate(batch)):
             if i % 5000 == 0:
                 print("Worker {}, tweet {}".format(worker_index, i))
+
+            # Ignore non-English tweets and tweets without text
+            if json_tweet["lang"] != "en" or not json_tweet["full_text"]:
+                continue
             tweet = json_to_tweet(json_tweet)
             if is_doctor_tweet(tweet):
                 json_file.write("{}\n".format(json.dumps(json_tweet)))
