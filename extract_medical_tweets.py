@@ -1,19 +1,11 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import os
 import json
-import random
 import re
 import nltk
-import shutil
-import pickle
-import time
 import gzip
-import datetime
 import twarc
-import requests
-import multiprocessing as mp
 import argparse
 
 nltk.download("stopwords")
