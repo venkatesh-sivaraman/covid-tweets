@@ -7,6 +7,7 @@ import nltk
 import gzip
 import twarc
 import argparse
+import utils
 
 nltk.download("stopwords")
 from nltk.corpus import stopwords
@@ -60,30 +61,6 @@ def is_doctor_tweet(tweet):
         return True
     return False
 
-def json_to_tweet(tweet):
-    """
-    Converts a tweet JSON from the Twarc API to the standard list of fields
-    for this analysis.
-
-    json_tweet: A dictionary in the Twarc API format.
-
-    Returns: A dictionary in the standard format for writing to CSV for this analysis.
-    """
-    return {
-        "full_text": tweet["full_text"],
-        "name": tweet["user"]["name"],
-        "screen_name": tweet["user"]["screen_name"],
-        "bio": tweet["user"]["description"],
-        "created_at": tweet["created_at"],
-        "user_id": tweet["user"]["id_str"],
-        "id": tweet["id"],
-        "place": tweet["place"],
-        "geo": tweet["geo"],
-        "is_quote": tweet["is_quote_status"],
-        "reply_to_id": tweet["in_reply_to_status_id_str"],
-        "reply_to_user": tweet["in_reply_to_user_id_str"]
-    }
-
 # Read the tweet IDs that need to be hydrated
 def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size=100000):
     """
@@ -129,11 +106,8 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
     batch_size: Number of tweets to process in each batch.
     """
 
-    # Get Twarc credentials from .twarc
-    with open(credentials_path, "r") as file:
-        lines = file.readlines()
-        keys = [line.strip().split(" = ")[1] for line in lines[1:] if line.strip()]
-    t = twarc.Twarc(*keys, app_auth=True)
+    # Load Twarc object
+    t = utils.load_twarc(credentials_path)
 
     for batch_index, batch in read_tweet_ids(tweet_ids_filename, num_workers, worker_index,
                                              skip_batches, batch_size=batch_size):
@@ -147,7 +121,7 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
             # Ignore non-English tweets and tweets without text
             if json_tweet["lang"] != "en" or not json_tweet["full_text"]:
                 continue
-            tweet = json_to_tweet(json_tweet)
+            tweet = utils.json_to_tweet(json_tweet)
             if is_doctor_tweet(tweet):
                 json_file.write("{}\n".format(json.dumps(json_tweet)))
                 csv_data.append(tweet)

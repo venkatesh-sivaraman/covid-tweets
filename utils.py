@@ -65,3 +65,44 @@ def preprocess_for_metamap(tweet):
     tweet = strip_multiple_whitespaces(tweet)
 
     return tweet
+
+def load_twarc(credentials_path):
+    """
+    Initializes a Twarc object using the credentials at the given path. The
+    credentials path should contain a consumer key, consumer secret, access token,
+    and access secret as written by the Twitter API following Twarc setup.
+
+    Returns: An authenticated Twarc object.
+    """
+
+    import twarc
+
+    with open(credentials_path, "r") as file:
+        lines = file.readlines()
+        keys = [line.strip().split(" = ")[1] for line in lines[1:] if line.strip()]
+    t = twarc.Twarc(*keys, app_auth=True)
+    return t
+
+def json_to_tweet(tweet):
+    """
+    Converts a tweet JSON from the Twarc API to the standard list of fields
+    for this analysis.
+
+    json_tweet: A dictionary in the Twarc API format.
+
+    Returns: A dictionary in the standard format for writing to CSV for this analysis.
+    """
+    return {
+        "full_text": tweet["full_text"],
+        "name": tweet["user"]["name"],
+        "screen_name": tweet["user"]["screen_name"],
+        "bio": tweet["user"]["description"],
+        "created_at": tweet["created_at"],
+        "user_id": tweet["user"]["id_str"],
+        "id": tweet["id"],
+        "place": tweet["place"],
+        "geo": tweet["geo"],
+        "is_quote": tweet["is_quote_status"],
+        "reply_to_id": tweet["in_reply_to_status_id_str"],
+        "reply_to_user": tweet["in_reply_to_user_id_str"]
+    }
