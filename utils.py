@@ -40,6 +40,7 @@ def preprocess_tweet_text(tweet):
 
 printable_chars = set(string.printable)
 decimal_regex = r'\b[0-9.,]+\b'
+html_regex = r'&\w+;'
 
 def to_ascii(tweet):
     return ''.join(c for c in tweet if c in printable_chars)
@@ -57,6 +58,9 @@ def preprocess_for_metamap(tweet):
 
     # Remove decimal numbers
     tweet = re.sub(decimal_regex, '', tweet)
+    
+    # Remove HTML symbols
+    tweet = re.sub(html_regex, '', tweet)
 
     # Remove newlines and random other characters
     tweet = re.sub(r'(?:\n|\r|[()-])+', ' ', tweet)
