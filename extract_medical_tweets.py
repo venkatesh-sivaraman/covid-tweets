@@ -89,6 +89,11 @@ def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size
                         yield (batch_index, current_batch)
                     batch_index += 1
                     current_batch = []
+    if current_batch:
+        if batch_index >= skip_batches:
+            yield (batch_index, current_batch)
+        batch_index += 1
+        current_batch = []
 
 def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_workers, worker_index, skip_batches, batch_size=100000):
     """
@@ -114,18 +119,24 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
         print("Worker {}, batch index {}".format(worker_index, batch_index))
         json_file = open(os.path.join(output_directory, "doctor_tweets_worker{}_batch{}.json".format(worker_index, batch_index)), "w")
         csv_data = []
+        tweets_analyzed = 0
+        english_text_tweets = 0
         for i, json_tweet in enumerate(t.hydrate(batch)):
             if i % 5000 == 0:
                 print("Worker {}, tweet {}".format(worker_index, i))
+            tweets_analyzed += 1
 
             # Ignore non-English tweets and tweets without text
             if json_tweet["lang"] != "en" or not json_tweet["full_text"]:
                 continue
+            english_text_tweets += 1
+
             tweet = utils.json_to_tweet(json_tweet)
             if is_doctor_tweet(tweet):
                 json_file.write("{}\n".format(json.dumps(json_tweet)))
                 csv_data.append(tweet)
-        print("Worker {}, loaded {} doctor tweets".format(worker_index, len(csv_data)))
+        print("Worker {}, loaded {} doctor tweets ({} tweets analyzed, {} with English text)".format(
+            worker_index, len(csv_data), tweets_analyzed, english_text_tweets))
         df = pd.DataFrame(csv_data)
         df.to_csv(os.path.join(output_directory, "doctor_tweets_worker{}_batch{}.csv".format(worker_index, batch_index)),
                   line_terminator="\n")
