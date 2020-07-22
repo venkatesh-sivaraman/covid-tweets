@@ -3,6 +3,13 @@ import string
 
 import gensim
 from gensim.parsing.preprocessing import strip_multiple_whitespaces
+from gensim.parsing.preprocessing import strip_punctuation
+from gensim.parsing.preprocessing import STOPWORDS
+from gensim.utils import simple_preprocess
+
+import nltk
+from nltk.stem import WordNetLemmatizer
+lemmatizer = WordNetLemmatizer()
 
 # dtypes used for passing to the dtype kwarg when reading a tweet dataframe
 dtype_spec = {'id': str, 'user_id': str, 'reply_to_id': str, 'reply_to_user': str}
@@ -17,6 +24,12 @@ def processHashtags(tweet):
     #remove '#' symbols
     tweet = re.sub('#', '', tweet)
     return tweet
+
+def remove_html(tweet):
+    """
+    Removes HTML symbols like &amp; and &gt; from the tweet.
+    """
+    return re.sub(r'&\w+;', ' ', tweet)
 
 def preprocess_tweet_text(tweet):
     """
@@ -36,7 +49,85 @@ def preprocess_tweet_text(tweet):
     # Process hashtags
     tweet = processHashtags(tweet)
 
+    # Remove HTML elements
+    tweet = remove_html(tweet)
+
     return tweet
+
+
+#### LDA Preprocessing
+
+
+'''
+Augmenting stopwords with words used to filter the tweets originally.
+Since they show up in almost every tweet, they aren't useful for differentiating
+between topics.
+
+stopwords are all lowercase.
+'''
+COVID_STOPWORDS = set([
+                       'coronavirus',
+                       '2019ncov',
+                       'coronaviruspandemic',
+                       'coronaoutbreak',
+                       'wuhanvirus',
+                       'covid19',
+                       'covid-19',
+                       'ncov',
+                       'ncov2019',
+                       'corona',
+                       'virus',
+                       'covid',
+                       'amp'])
+FILTER_WORDS = STOPWORDS.union(COVID_STOPWORDS)
+
+def decontract(tweet):
+    '''
+    helper function for splitting contractions.
+    \'s is removed because we can't disambiguate between possession (Julia's)
+    and is (Julia is ...)
+    '''
+    tweet = re.sub(r"n\'t", " not", tweet)
+    tweet = re.sub(r"\'re", " are", tweet)
+    tweet = re.sub(r"\'s", "", tweet)
+    tweet = re.sub(r"\'d", " would", tweet)
+    tweet = re.sub(r"\'ll", " will", tweet)
+    tweet = re.sub(r"\'t", " not", tweet)
+    tweet = re.sub(r"\'ve", " have", tweet)
+    tweet = re.sub(r"\'m", " am", tweet)
+    return tweet
+
+def preprocess_for_lda(tweet):
+    """
+    Processes a tweet for entry into an LDA topic model. Removes hashtags and
+    unnecessary characters, filters out stopwords, tokenizes the tweet into
+    individual words, and lemmatizes the words.
+    """
+    tweet = preprocess_tweet_text(tweet)
+
+    # Handle contractions
+    tweet = decontract(tweet)
+
+    # Remove punctuation
+    tweet = strip_punctuation(tweet)
+
+    # Remove multiple spaces
+    tweet = strip_multiple_whitespaces(tweet)
+
+    # Tokenize, cases everything to lowercase, removes emojis
+    tokens = simple_preprocess(tweet)
+
+    # Lemmatize tokens
+    words = [lemmatizer.lemmatize(word) for word in tokens]
+
+    # Remove stopwords
+    words = [word for word in words if word not in FILTER_WORDS]
+
+    return words
+
+
+#### MetaMap Preprocessing
+
 
 printable_chars = set(string.printable)
 decimal_regex = r'\b[0-9.,]+\b'
