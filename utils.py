@@ -1,5 +1,6 @@
 import re
 import string
+import pandas as pd
 
 import gensim
 from gensim.parsing.preprocessing import strip_multiple_whitespaces
@@ -11,8 +12,33 @@ import nltk
 from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
 
+
+### Tweet CSV files
+
+
 # dtypes used for passing to the dtype kwarg when reading a tweet dataframe
 dtype_spec = {'id': str, 'user_id': str, 'reply_to_id': str, 'reply_to_user': str}
+
+def read_tweet_csv(path, index_by_id=False):
+    """
+    Reads a standard tweet CSV file and returns the dataframe.
+
+    index_by_id: If true, set the dataframe index to be the tweet ID.
+    """
+    return pd.read_csv(path,
+                       lineterminator='\n',
+                       dtype=dtype_spec,
+                       index_col="id" if index_by_id else 0)
+
+def write_tweet_csv(df, path):
+    """
+    Writes the given dataframe to a CSV file at the given path.
+    """
+    df.to_csv(path, line_terminator="\n")
+
+
+### Preprocessing
+
 
 def processHashtags(tweet):
     """

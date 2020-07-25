@@ -94,7 +94,7 @@ def metamap_worker(metamap_path, tweets_path, output_dir, batch_size, batch_star
     mm = MetaMap.get_instance(metamap_path)
 
     # Read and preprocess tweets
-    tweets = pd.read_csv(tweets_path, dtype=utils.dtype_spec, lineterminator='\n')
+    tweets = utils.read_tweet_csv(tweets_path)
     data = tweets.full_text.values.tolist()
     data = [utils.preprocess_for_metamap(tweet) for tweet in data]
     tweet_ids = tweets["id"].values.tolist()

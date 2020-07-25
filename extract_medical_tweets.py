@@ -158,8 +158,7 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
         print("Worker {}, loaded {} doctor tweets ({} tweets analyzed, {} with English text)".format(
             worker_index, len(csv_data), tweets_analyzed, english_text_tweets))
         df = pd.DataFrame(csv_data)
-        df.to_csv(os.path.join(output_directory, "doctor_tweets" + path_suffix + ".csv"),
-                  line_terminator="\n")
+        utils.write_tweet_csv(df, os.path.join(output_directory, "doctor_tweets" + path_suffix + ".csv"))
         json_file.close()
 
         # Write n-grams

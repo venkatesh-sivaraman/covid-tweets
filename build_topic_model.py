@@ -161,7 +161,7 @@ if __name__ == '__main__':
 
     # Read tweets
     print("Reading tweets...")
-    tweets_df = pd.read_csv(args.tweets, lineterminator='\n', dtype=utils.dtype_spec)
+    tweets_df = utils.read_tweet_csv(args.tweets)
     if args.head:
         tweets_df = tweets_df.head(args.head)
     if args.verbose: print("Read {} tweets".format(len(tweets_df)))

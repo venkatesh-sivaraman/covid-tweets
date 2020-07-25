@@ -62,10 +62,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print("Reading tweets...")
-    tweets_df = pd.read_csv(args.tweets,
-                            lineterminator='\n',
-                            dtype=utils.dtype_spec)
+    tweets_df = utils.read_tweet_csv(args.tweets)
     print("Merging {} tweets...".format(len(tweets_df)))
     grouped = merge_threads(tweets_df)
-    grouped.to_csv(args.out, line_terminator='\n')
+    utils.write_tweet_csv(grouped, args.out)
     print("Done merging {} threads.".format(len(grouped)))
