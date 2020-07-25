@@ -5,7 +5,9 @@ import json
 import re
 import nltk
 import gzip
+import tqdm
 import twarc
+import pickle
 import argparse
 import utils
 
@@ -60,6 +62,14 @@ def is_doctor_tweet(tweet):
     elif keywords.search(tweet["bio"]):
         return True
     return False
+
+def collect_ngrams(counter, tokens, n=1):
+    """
+    Adds the n-grams from the given set of tokens to the counter dictionary.
+    """
+    for i in range(len(tokens) - n + 1):
+        ngram = " ".join(tokens[i:i + n])
+        counter[ngram] = counter.get(ngram, 0) + 1
 
 # Read the tweet IDs that need to be hydrated
 def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size=100000):
@@ -117,13 +127,15 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
     for batch_index, batch in read_tweet_ids(tweet_ids_filename, num_workers, worker_index,
                                              skip_batches, batch_size=batch_size):
         print("Worker {}, batch index {}".format(worker_index, batch_index))
-        json_file = open(os.path.join(output_directory, "doctor_tweets_worker{}_batch{}.json".format(worker_index, batch_index)), "w")
+        path_suffix = "_worker{}_batch{}".format(worker_index, batch_index)
+        json_file = open(os.path.join(output_directory, "doctor_tweets" + path_suffix + ".json"), "w")
         csv_data = []
+        non_doctor_ngrams = [{}, {}, {}] # unigrams, bigrams, trigrams
+        doctor_ngrams = [{}, {}, {}]
+
         tweets_analyzed = 0
         english_text_tweets = 0
-        for i, json_tweet in enumerate(t.hydrate(batch)):
-            if i % 5000 == 0:
-                print("Worker {}, tweet {}".format(worker_index, i))
+        for i, json_tweet in tqdm.tqdm(enumerate(t.hydrate(batch)), mininterval=1, total=len(batch)):
             tweets_analyzed += 1
 
             # Ignore non-English tweets and tweets without text
@@ -132,15 +144,34 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
             english_text_tweets += 1
 
             tweet = utils.json_to_tweet(json_tweet)
+            ngram_set = non_doctor_ngrams
             if is_doctor_tweet(tweet):
                 json_file.write("{}\n".format(json.dumps(json_tweet)))
                 csv_data.append(tweet)
+                ngram_set = doctor_ngrams
+            
+            # n-gram collection - first preprocess tweet text
+            tokens = [t for t in re.split(r"\W", utils.preprocess_for_metamap(tweet["full_text"]).lower()) if t]
+            for n, ngram_counter in enumerate(ngram_set):
+                collect_ngrams(ngram_counter, tokens, n=n + 1)
+
         print("Worker {}, loaded {} doctor tweets ({} tweets analyzed, {} with English text)".format(
             worker_index, len(csv_data), tweets_analyzed, english_text_tweets))
         df = pd.DataFrame(csv_data)
-        df.to_csv(os.path.join(output_directory, "doctor_tweets_worker{}_batch{}.csv".format(worker_index, batch_index)),
+        df.to_csv(os.path.join(output_directory, "doctor_tweets" + path_suffix + ".csv"),
                   line_terminator="\n")
         json_file.close()
+
+        # Write n-grams
+        with open(os.path.join(output_directory, "word_counts" + path_suffix + ".pkl"), "wb") as file:
+            pickle.dump({
+                "total_tweets_count": tweets_analyzed,
+                "english_text_tweets": english_text_tweets,
+                "doctor_tweets_count": len(csv_data),
+                "non_doctor_ngrams": non_doctor_ngrams,
+                "doctor_ngrams": doctor_ngrams
+            }, file)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=('Hydrate tweets and save if they are from a '
