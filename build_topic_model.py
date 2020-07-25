@@ -66,15 +66,20 @@ def write_tweet_topics(tweets_df, gensim_lda_model, id2word, corpus, output_dir,
 
     print("Writing tweet topics...")
     file = open(os.path.join(output_dir, "tweet_topics.csv"), "w")
-    file.write("id," + ",".join(["prob_topic_" + str(t) for t in range(num_topics)]) + "\n")
+    file.write("id," + ",".join(["prob_topic_" + str(t) for t in range(num_topics)]) + ",top_topic\n")
 
     ids = tweets_df.id.values.tolist()
     for corpus_element, id_str in tqdm.tqdm(zip(corpus, ids), total=len(ids)):
         topic_dist = gensim_lda_model[corpus_element]
         probs = ["0" for _ in range(num_topics)]
+        max_topic = -1
+        max_prob = 1.0 / num_topics # don't count tweets that have a uniform probability for all topics
         for topic, prob in topic_dist:
             probs[topic] = "{:.3g}".format(prob)
-        file.write(id_str + "," + ",".join(probs) + "\n")
+            if prob > max_prob:
+                max_topic = topic
+                max_prob = prob
+        file.write(id_str + "," + ",".join(probs) + "," + str(max_topic) + "\n")
 
     file.close()
 
