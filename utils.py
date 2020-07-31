@@ -1,6 +1,7 @@
 import re
 import string
 import pandas as pd
+import tqdm
 
 import gensim
 from gensim.parsing.preprocessing import strip_multiple_whitespaces
@@ -227,3 +228,32 @@ def json_to_tweet(tweet):
         "reply_to_id": tweet["in_reply_to_status_id_str"],
         "reply_to_user": tweet["in_reply_to_user_id_str"]
     }
+
+
+### Word Counts
+
+
+def collect_ngrams(counter, tokens, n=1):
+    """
+    Adds the n-grams from the given set of tokens to the counter dictionary.
+    """
+    for i in range(len(tokens) - n + 1):
+        ngram = " ".join(tokens[i:i + n])
+        counter[ngram] = counter.get(ngram, 0) + 1
+
+def collect_df_ngram_counts(df, min_count=0, verbose=False):
+    """
+    Computes the ngram counts in the given dataframe, and returns them as a
+    list of dictionaries, one for each type of ngram (1-3).
+    """
+    word_counts = [{}, {}, {}]
+    counter = tqdm.tqdm(range(len(df))) if verbose else range(len(df))
+    for i in counter:
+        tweet = df.iloc[i]
+        tokens = [t for t in re.split(r"\W", preprocess_for_metamap(tweet["full_text"]).lower()) if t]
+        for n, count_set in enumerate(word_counts):
+            collect_ngrams(count_set, tokens, n + 1)
+
+    if min_count > 0:
+        word_counts = {w: f for w, f in relevant_word_counts.items() if f >= min_count}
+    return word_counts

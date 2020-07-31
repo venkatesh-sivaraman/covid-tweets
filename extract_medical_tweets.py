@@ -63,14 +63,6 @@ def is_doctor_tweet(tweet):
         return True
     return False
 
-def collect_ngrams(counter, tokens, n=1):
-    """
-    Adds the n-grams from the given set of tokens to the counter dictionary.
-    """
-    for i in range(len(tokens) - n + 1):
-        ngram = " ".join(tokens[i:i + n])
-        counter[ngram] = counter.get(ngram, 0) + 1
-
 # Read the tweet IDs that need to be hydrated
 def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size=100000):
     """
@@ -153,7 +145,7 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
             # n-gram collection - first preprocess tweet text
             tokens = [t for t in re.split(r"\W", utils.preprocess_for_metamap(tweet["full_text"]).lower()) if t]
             for n, ngram_counter in enumerate(ngram_set):
-                collect_ngrams(ngram_counter, tokens, n=n + 1)
+                utils.collect_ngrams(ngram_counter, tokens, n=n + 1)
 
         print("Worker {}, loaded {} doctor tweets ({} tweets analyzed, {} with English text)".format(
             worker_index, len(csv_data), tweets_analyzed, english_text_tweets))

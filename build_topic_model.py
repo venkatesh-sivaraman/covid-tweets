@@ -10,6 +10,7 @@ import utils
 import datetime
 import pprint
 import tqdm
+import json
 
 import gensim
 import gensim.corpora as corpora
@@ -24,7 +25,7 @@ from nltk.tokenize import word_tokenize
 
 def write_summary(lda_model, gensim_lda_model, lemmatized_data, id2word, corpus, output_dir, num_topics):
     """
-    Writes a summary of the LDA model to a summary.txt file in the given output
+    Writes a summary of the LDA model to a summary.json file in the given output
     directory. Takes two versions of the same model as input: one LdaModel instance,
     and one gensim-compatible model instance.
     """
@@ -41,14 +42,21 @@ def write_summary(lda_model, gensim_lda_model, lemmatized_data, id2word, corpus,
     coherence_score = coherence_model_lda.get_coherence()
 
     # Look at topic keywords and their weights.
-    with open(os.path.join(output_dir, "summary.txt"), "w") as f:
-        print('Number of Tweets in dataset: ', len(lemmatized_data), file=f)
-        print('Log Perplexity Bound: ', bound, file=f)
-        print('Perplexity ( 2^(-bound) ):', perplexity, file=f)
-        print('The lower, the better.', file=f)
-        print('\nCoherence Score: ', coherence_score, file=f)
-        print('The higher, the better.', file=f)
-        pprint.pprint(sorted(lda_model.print_topics(num_topics=100), key=lambda x: x[0]), f)
+    topic_words = sorted([{"topic_num": x[0], "weights": [(word, round(weight, 3)) for word, weight in x[1]]}
+                          for x in lda_model.show_topics(
+                              num_topics=num_topics,
+                              num_words=25,
+                              formatted=False)],
+                         key=lambda x: x["topic_num"])
+
+    with open(os.path.join(output_dir, "summary.json"), "w") as f:
+        json.dump({
+            "num_tweets": len(lemmatized_data),
+            "log_perplexity_bound": bound,
+            "perplexity": perplexity,
+            "coherence": coherence_score,
+            "topics": topic_words
+        }, f, sort_keys=True, indent=2, separators=(',', ': '))
 
 def write_tweet_topics(tweets_df, gensim_lda_model, id2word, corpus, output_dir, num_topics=100):
     """
@@ -88,7 +96,7 @@ def build(mallet_path, tweets_df, output_dir, num_topics=100, verbose=False):
     Builds a topic model from the given tweets. Writes the following files into
     the output directory:
 
-    * summary.txt: A human-readable summary of the model, including top word
+    * summary.json: A JSON summary of the model, including top word
         weights
     * tweet_topics.csv: A CSV file indexed by tweet ID where each column represents
         the weight of a given topic in the tweet.
