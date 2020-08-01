@@ -78,7 +78,7 @@ def write_tweet_topics(tweets_df, gensim_lda_model, id2word, corpus, output_dir,
 
     ids = tweets_df.id.values.tolist()
     for corpus_element, id_str in tqdm.tqdm(zip(corpus, ids), total=len(ids)):
-        topic_dist = gensim_lda_model[corpus_element]
+        topic_dist = gensim_lda_model.get_document_topics(corpus_element, minimum_probability=0.0)
         probs = ["0" for _ in range(num_topics)]
         max_topic = -1
         max_prob = 1.0 / num_topics # don't count tweets that have a uniform probability for all topics
@@ -114,6 +114,7 @@ def build(mallet_path, tweets_df, output_dir, num_topics=100, verbose=False):
     print("Building corpus...")
     id2word = corpora.Dictionary(lemmatized_data)
     tf = [id2word.doc2bow(tweet) for tweet in lemmatized_data]
+    id2word.save(os.path.join(output_dir, "dictionary.pkl"))
 
     if verbose:
         print('The corpus (token_id, #occurances in this doc) for example tweets are:')
