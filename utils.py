@@ -255,5 +255,5 @@ def collect_df_ngram_counts(df, min_count=0, verbose=False):
             collect_ngrams(count_set, tokens, n + 1)
 
     if min_count > 0:
-        word_counts = {w: f for w, f in relevant_word_counts.items() if f >= min_count}
+        word_counts = {w: f for w, f in word_counts.items() if f >= min_count}
     return word_counts
