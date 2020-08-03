@@ -258,3 +258,34 @@ def collect_df_ngram_counts(df, min_count=0, verbose=False):
         word_counts = [{w: f for w, f in wc_set.items() if f >= min_count}
                        for wc_set in word_counts]
     return word_counts
+
+
+### Concepts
+
+
+# Categories of concept that are deemed "useful" for clinical relevance
+USEFUL_SEMTYPES = {
+    "orch",    "phsu",    "dsyn",
+    "patf",    "virs",    "neop",
+    "diap",    "medd",    "fndg",
+    "celc",    "blor",    "bpoc",
+    "prog",    "bmod",    "topp",
+    "mbrt",    "sosy",    "acty",
+    "dora",
+}
+
+def filter_useful_concepts(df):
+    """
+    Returns a new dataframe with only concepts that are deemed 'useful' (i.e.
+    not filter words, and in a useful UMLS semantic type category).
+    """
+    def is_useful_concept(row):
+        if row.preferred_name.lower() in FILTER_WORDS:
+            return False
+
+        categories = set(row.semtypes.replace("[", "").replace("]", "").split(","))
+        if not categories & USEFUL_SEMTYPES:
+            return False
+        return True
+
+    return df[df.apply(is_useful_concept, axis=1)]

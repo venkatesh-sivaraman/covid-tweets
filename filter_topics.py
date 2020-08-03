@@ -15,6 +15,8 @@ import pickle
 import pprint
 import tqdm
 import json
+import matplotlib.pyplot as plt
+from kneed import KneeLocator
 
 def compute_relevance(input_dir, verbose=False):
     """
@@ -90,33 +92,32 @@ def load_concepts(concepts_file, thread_mapping=None, verbose=False):
                       .reset_index(drop=True))
 
     return concepts_df
-        
-# Categories of concept that are deemed "useful" for clinical relevance
-USEFUL_SEMTYPES = {
-    "orch",    "phsu",    "dsyn",
-    "patf",    "virs",    "neop",
-    "diap",    "medd",    "fndg",
-    "celc",    "blor",    "bpoc",
-    "prog",    "bmod",    "topp",
-    "mbrt",    "sosy",    "acty",
-    "dora",
-}
 
-def filter_useful_concepts(df):
+def find_knee(topic_importances, window_len=5, plot=False):
     """
-    Returns a new dataframe with only concepts that are deemed 'useful' (i.e.
-    not filter words, and in a useful UMLS semantic type category).
+    Interprets the given list of topic importances as a knee plot, then finds 
+    the point of most increasing growth. Returns a tuple (top_topics, bottom_topics),
+    where top_topics is the portion that meets the relevance cutoff (in decreasing
+    relevance order), and bottom_topics is the portion that does not (in increasing
+    relevance order).
     """
-    def is_useful_concept(row):
-        if row.preferred_name.lower() in utils.FILTER_WORDS:
-            return False
+    importances = np.pad(np.array(sorted(topic_importances)), window_len // 2, mode='edge')
+    window = np.ones(window_len) / window_len
+    importances_lp = np.convolve(importances, window, mode='valid')
 
-        categories = set(row.semtypes.replace("[", "").replace("]", "").split(","))
-        if not categories & USEFUL_SEMTYPES:
-            return False
-        return True
+    kneedle = KneeLocator(np.arange(len(importances_lp)), importances_lp, S=1.0, curve='convex', direction='increasing')
+    if plot:
+        plt.figure()
+        plt.plot(sorted(topic_importances), label="Original")
+        plt.plot(importances_lp, label="Smoothed")
+        plt.vlines(kneedle.knee, 0, max(topic_importances), label="Knee")
+        plt.legend()
+        plt.show()
 
-    return df[df.apply(is_useful_concept, axis=1)]
+    sorted_topics = np.array(topic_importances).argsort()
+    top_topics = list(reversed(sorted_topics[kneedle.knee:]))
+    bottom_topics = sorted_topics[:20].tolist()
+    return top_topics, bottom_topics
 
 def filter_topics(topics_df, tweets_df, concepts_df, relevance, start_num_topics=100, end_num_topics=20, thread_mapping=None, verbose=False):
     """
@@ -136,7 +137,7 @@ def filter_topics(topics_df, tweets_df, concepts_df, relevance, start_num_topics
 
     # Don't double count the same concept
     old_count = len(concepts_df)
-    concepts_df = concepts_df.drop_duplicates(["tweet_id", "preferred_name"])
+    concepts_df = concepts_df.drop_duplicates(["tweet_id", "preferred_name"]).drop_duplicates(["tweet_id", "trigger_word"])
     if verbose: print("Dropped {} duplicate concepts".format(old_count - len(concepts_df)))
 
     concept_relevances = filter_useful_concepts(concepts_df).groupby('tweet_id').agg({'enrichment': 'sum'})
@@ -150,24 +151,23 @@ def filter_topics(topics_df, tweets_df, concepts_df, relevance, start_num_topics
     if verbose: print("Computing topic importances...")
     topic_relevances = np.zeros(start_num_topics)
     topic_counts = np.zeros(start_num_topics)
+
     topic_counter = tqdm.tqdm(range(len(topic_counts))) if verbose else range(len(topic_counts))
     for i in topic_counter:
-        tweets = tweets_with_concept_counts[tweets_with_concept_counts.top_topic == i]
-        topic_relevances[i] += tweets.enrichment.sum()
-        if thread_mapping is not None:
-            topic_counts[i] += tweets.num_tweets.sum()            
-        else:
-            topic_counts[i] += len(tweets)
+        weights = tweets_with_concept_counts["prob_topic_" + str(i)]
+        weighted_rel = weights * tweets_with_concept_counts.enrichment
+        topic_counts[i] += weights.sum()
+        topic_relevances[i] += weighted_rel.sum()
 
     topic_importances = topic_relevances / topic_counts
-    relevant_topics = set(topic_importances.argsort()[-end_num_topics:].tolist())
+    relevant_topics, irrelevant_topics = find_knee(topic_importances) # , plot=verbose
     if verbose: print("Most relevant topics:", relevant_topics)
 
     # Generate the output dataframe
-    relevant_tweets_df = tweets_df.loc[topics_df[topics_df.top_topic.isin(relevant_topics)].index]
+    relevant_tweets_df = tweets_df.loc[topics_df[topics_df.top_topic.isin(set(relevant_topics))].index]
     if verbose: print("{} relevant tweets".format(len(relevant_tweets_df)))
 
-    return relevant_tweets_df
+    return topic_importances.tolist(), relevant_tweets_df
 
 def compute_relevant_ngram_counts(tweets_df, relevant_tweets_df, verbose=False, min_count=0):
     """
@@ -237,16 +237,19 @@ if __name__ == '__main__':
         load_concepts(args.concepts, thread_mapping=thread_mapping, verbose=args.verbose)
     )
 
-    filtered_df = filter_topics(topics_df,
-                                tweets_df,
-                                concepts_df,
-                                relevance,
-                                start_num_topics=args.start_num_topics,
-                                end_num_topics=args.end_num_topics,
-                                thread_mapping=thread_mapping,
-                                verbose=args.verbose)
+    importances, filtered_df = filter_topics(topics_df,
+                                             tweets_df,
+                                             concepts_df,
+                                             relevance,
+                                             start_num_topics=args.start_num_topics,
+                                             end_num_topics=args.end_num_topics,
+                                             thread_mapping=thread_mapping,
+                                             verbose=args.verbose)
 
     if args.verbose: print("Writing tweets...")
+    with open(os.path.join(args.tweets, "relevances.json"), "w") as file:
+        json.dump([[i, imp] for i, imp in enumerate(importances)], file)
+
     tweets_df_no_index = filtered_df.reset_index()
     tweets_df_no_index.id = tweets_df_no_index.id.astype(str)
     utils.write_tweet_csv(tweets_df_no_index, os.path.join(args.output, "tweets.csv"))
