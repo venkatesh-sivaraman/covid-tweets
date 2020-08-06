@@ -51,19 +51,53 @@ def merge_threads(tweets_df):
     
     return grouped
 
+def merge_concepts(concepts_df, tweets_df):
+    """
+    Replaces the contents of the tweet_id column in the given concepts dataframe
+    with the thread ID from the tweets dataframe.
+    """
+    return (pd.merge(concepts_df,
+                     tweets_df,
+                     how='inner',
+                     right_on='id',
+                     left_on='tweet_id')[['thread_id',
+                                         'preferred_name',
+                                         'trigger',
+                                         'trigger_word',
+                                         'cui',
+                                         'score',
+                                         'semtypes']]
+            .rename(columns={"thread_id": "tweet_id"})
+            .reset_index(drop=True))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=('Merge tweets with the same thread ID.'))
     parser.add_argument('tweets', type=str,
                         help='Path to a CSV file containing tweets')
     parser.add_argument('out', type=str,
-                        help='Path to a CSV file to create')
+                        help='Path to a directory in which to write')
+    parser.add_argument('--concepts', type=str, default=None,
+                        help='Concepts CSV path to also merge (writes in same directory)',
+                        dest='concepts')
 
     args = parser.parse_args()
+
+    if not os.path.exists(args.out):
+        os.mkdir(args.out)
 
     print("Reading tweets...")
     tweets_df = utils.read_tweet_csv(args.tweets)
     print("Merging {} tweets...".format(len(tweets_df)))
     grouped = merge_threads(tweets_df)
-    utils.write_tweet_csv(grouped, args.out)
+    utils.write_tweet_csv(grouped, os.path.join(args.out, "merged_threads.csv"))
+
+    # Write a simple thread mapping
+    tweets_df[['id', 'thread_id']].set_index('id').to_csv(os.path.join(args.out, "thread_mapping.csv"))
+
     print("Done merging {} threads.".format(len(grouped)))
+    if args.concepts:
+        print("Merging concepts...")
+        concepts_df = merge_concepts(pd.read_csv(args.concepts, dtype={"tweet_id": str}), tweets_df)
+        concepts_df.to_csv(os.path.join(args.out, "merged_concepts.csv"))
+        print("Done writing concepts.")
+

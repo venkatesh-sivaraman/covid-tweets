@@ -3,8 +3,6 @@
 level=$1
 datadir=$2
 mallet=$3
-concepts=$4
-threadmapping=$5
 
 nextlevel=$(expr $level + 1)
 
@@ -17,5 +15,7 @@ echo "================ 10 TOPICS ================"
 python build_topic_model.py "$mallet" "$datadir/level_$level/tweets.csv" "$datadir/level_$level/10" --verbose --topics=10
 
 # Filter the tweets by the 100-topic model
+echo "================ RELEVANCE ================"
+python compute_relevance.py "$datadir/level_$level" --verbose
 echo "================ FILTER ================"
-python filter_topics.py "$datadir/level_$level" "$datadir/level_$level/100" "$concepts" "$datadir/level_$nextlevel" --thread_mapping="$threadmapping" --verbose
+python filter_topics.py "$datadir/level_$level" "$datadir/level_$nextlevel" --verbose
