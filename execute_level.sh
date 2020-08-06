@@ -5,6 +5,7 @@ datadir=$2
 mallet=$3
 
 nextlevel=$(expr $level + 1)
+mkdir -p "$datadir/level_$nextlevel"
 
 # Build several topic models
 echo "================ 100 TOPICS ================"
