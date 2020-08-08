@@ -107,8 +107,8 @@ def build(mallet_path, tweets_df, output_dir, num_topics=100, verbose=False):
         os.mkdir(output_dir)
 
     print("Preprocessing tweets...")
-    initial_data = tweets_df.full_text.values.tolist()
-    lemmatized_data = [utils.preprocess_for_lda(tweet) for tweet in tqdm.tqdm(initial_data)]
+    initial_data = tweets_df.standardized_text.values.tolist()
+    lemmatized_data = [tweet.split() for tweet in tqdm.tqdm(initial_data)]
 
     # Create dictionary and term-frequency mapping
     print("Building corpus...")

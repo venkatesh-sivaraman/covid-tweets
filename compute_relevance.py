@@ -11,7 +11,7 @@ import pprint
 import tqdm
 import json
 
-def load_relevance(input_dir, verbose=False):
+def load_relevance(input_dir, return_counts=False, verbose=False):
     """
     Computes a relevance dictionary given the relevant_word_counts.pkl and
     irrelevant_word_counts.pkl files in the input directory.
@@ -44,7 +44,7 @@ def load_relevance(input_dir, verbose=False):
         for word, ratio in sorted_ratios[:20]:
             print(word, ratio)
 
-    return relevance
+    return (doctor_word_counts, non_doctor_word_counts, relevance) if return_counts else relevance
 
 def load_topics(topics_file, tweets_file, head=0, return_tweets=False):
     """
@@ -88,6 +88,69 @@ def load_concepts(concepts_file, relevance, verbose=False):
     concept_relevances = concepts_df.groupby('tweet_id').agg({'relevance': 'sum'})
     return concepts_df, concept_relevances
 
+def representative_keyphrases(topics_df, all_word_counts, tweet_count, num_topics=100, max_keyphrases=5, min_count=2, verbose=False):
+    """
+    Determines a set of representative keyphrases for each topic. Returns a list
+    of lists where each inner list contains a keyphrase and an enrichment score
+    for that keyphrase.
+    """
+    rep_keyphrases = []
+
+    for topic in range(num_topics):
+        single_topic_df = topics_df[topics_df.top_topic == topic]
+        word_counts = utils.collect_df_ngram_counts(single_topic_df, min_count=min_count, verbose=False)
+        relevance = {}
+        for n, word_count_set in enumerate(word_counts):
+            for word, f in word_count_set.items():
+                comps = word.split()
+                if {word, comps[0], comps[-1]} & utils.FILTER_WORDS:
+                    continue
+                reference_f = all_word_counts[n].get(word, 0) - f
+                relevance[word] = (f / len(single_topic_df) + 1e-3) / (reference_f / (tweet_count - len(single_topic_df)) + 1e-3)
+        sorted_ratios = sorted(relevance.items(), key=lambda x: x[1], reverse=True)
+        
+        keyphrases = sorted([(utils.preprocess_keyphrase(x[0]), x) for x in sorted_ratios[:max_keyphrases]],
+                            key=lambda x: len(x[0]),
+                            reverse=True)
+        # Remove redundant keyphrases
+        i = 0
+        while i < len(keyphrases):
+            current, _ = keyphrases[i]
+            j = i + 1
+            while j < len(keyphrases):
+                candidate, _ = keyphrases[j]
+                # If this is a subset, or the overlap is sufficiently large (at most one different
+                # word present in each) then remove
+                if candidate & current == candidate or len(candidate & current) >= max(len(candidate) - 1, len(current) - 1, 1):
+                    del keyphrases[j]
+                else:
+                    j += 1
+            i += 1
+        
+        if verbose: print("Topic", topic, ":", ", ".join(word for info, (word, ratio) in keyphrases))
+        rep_keyphrases.append([(word, round(ratio, 3)) for tokens, (word, ratio) in keyphrases])
+
+    return rep_keyphrases
+
+def get_date(tweet):
+    return datetime.date.strftime(datetime.datetime.strptime(tweet['created_at'],'%a %b %d %H:%M:%S +0000 %Y'), '%Y-%m-%d')
+
+def tweet_counts_by_date(topics_df, num_topics=100, verbose=False):
+    """
+    Computes the number of tweets posted on each day for each topic.
+    """
+    topic_dates = [{} for _ in range(num_topics)]
+    topic_probs = topics_df[["prob_topic_{}".format(t) for t in range(num_topics)]]
+
+    counter = tqdm.tqdm(range(len(topics_df))) if verbose else range(len(topics_df))
+    for i in counter:
+        probs = topic_probs.iloc[i].values
+        day = get_date(topics_df.iloc[i])
+        for t, p in zip(topic_dates, probs):
+            t[day] = t.get(day, 0) + p
+
+    return topic_dates
+
 def compute_tweet_relevance(topics_df, concept_relevances, num_topics=100, verbose=False):
     """
     Computes the relevance of each topic as well as each tweet.
@@ -123,6 +186,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=('Compute topic and tweet relevance.'))
     parser.add_argument('base_dir', type=str,
                         help='Path to a directory containing topic models, a tweets.csv file, word count pickles, and concepts')
+    parser.add_argument('-wc', '--word-counts', type=str, dest='word_counts_path', default=None,
+                        help='Path to a word counts pkl to use as the baseline for representative keyphrases (default is to use current level)')
     parser.add_argument('--head', type=int, help='Number of tweets limited to in the topic model', default=0,
                         dest='head')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
@@ -131,7 +196,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.verbose: print("Computing relevance...")
-    relevance = load_relevance(args.base_dir, verbose=args.verbose)
+    word_counts, _, relevance = load_relevance(args.base_dir, return_counts=True, verbose=args.verbose)
 
     if args.verbose: print("Loading concepts...")
     concepts_df, concept_relevances = load_concepts(os.path.join(args.base_dir, "concepts.csv"),
@@ -154,6 +219,28 @@ if __name__ == '__main__':
                                                         concept_relevances,
                                                         num_topics=num_topics,
                                                         verbose=args.verbose)
+
+            baseline_tweet_count = len(topics_df)
+            if args.word_counts_path:
+                with open(args.word_counts_path, "rb") as file:
+                    info = pickle.load(file)
+                    baseline_tweet_count = info["tweet_count"]
+                    word_counts = info["word_counts"]
+
+            # Representative keyphrases
+            keyphrases = representative_keyphrases(topics_df,
+                                                   word_counts,
+                                                   baseline_tweet_count,
+                                                   num_topics=num_topics,
+                                                   verbose=args.verbose)
+            # Time series
+            time_series = tweet_counts_by_date(topics_df,
+                                               num_topics=num_topics,
+                                               verbose=args.verbose)
+
+            for item, kp, ts in zip(relevance_summary, keyphrases, time_series):
+                item["keyphrases"] = kp
+                item["time_series"] = ts
 
             with open(os.path.join(args.base_dir, fname, "relevance.json"), "w") as file:
                 json.dump(relevance_summary, file)

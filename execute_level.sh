@@ -17,6 +17,6 @@ python build_topic_model.py "$mallet" "$datadir/level_$level/tweets.csv" "$datad
 
 # Filter the tweets by the 100-topic model
 echo "================ RELEVANCE ================"
-python compute_relevance.py "$datadir/level_$level" --verbose
+python compute_relevance.py "$datadir/level_$level" -v -wc "$datadir/level_0/relevant_word_counts.pkl"
 echo "================ FILTER ================"
 python filter_topics.py "$datadir/level_$level" "$datadir/level_$nextlevel" --verbose

@@ -20,7 +20,7 @@ from kneed import KneeLocator
 from compute_relevance import load_topics
 
 
-def find_knee(topic_importances, window_len=5, plot=False):
+def find_knee(topic_importances, window_len=9, plot=False):
     """
     Interprets the given list of topic importances as a knee plot, then finds 
     the point of most increasing growth. Returns a tuple (top_topics, bottom_topics),
@@ -46,7 +46,7 @@ def find_knee(topic_importances, window_len=5, plot=False):
     bottom_topics = sorted_topics[:20].tolist()
     return top_topics, bottom_topics
 
-def filter_topics(topics_df, tweets_df, relevance_info, start_num_topics=100, end_num_topics=20, verbose=False):
+def filter_topics(topics_df, tweets_df, relevance_info, fraction=0.2, start_num_topics=100, end_num_topics=20, verbose=False):
     """
     Filters the tweets in the given topics dataframe by the relevance given in
     the relevance info dictionary. Both topics_df and tweets_df should be indexed
@@ -54,35 +54,44 @@ def filter_topics(topics_df, tweets_df, relevance_info, start_num_topics=100, en
     """
 
     topic_importances = np.array([t["relevance"] for t in relevance_info])
-    relevant_topics, irrelevant_topics = find_knee(topic_importances) # , plot=verbose
-    if verbose: print("Most relevant topics:", relevant_topics)
+    # relevant_topics, irrelevant_topics = find_knee(topic_importances) # , plot=verbose
+    # if verbose: print("Most relevant topics:", relevant_topics)
 
-    # Generate the output dataframe
-    relevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in relevant_topics]]
-    relevant_sum = relevant_topic_probs.sum(axis=1)
-    irrelevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in irrelevant_topics]]
-    irrelevant_sum = irrelevant_topic_probs.sum(axis=1)
+    # # Generate the output dataframe
+    # relevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in relevant_topics]]
+    # relevant_sum = relevant_topic_probs.sum(axis=1)
+    # irrelevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in irrelevant_topics]]
+    # irrelevant_sum = irrelevant_topic_probs.sum(axis=1)
 
-    relevance_ratios = relevant_sum / (relevant_sum.sum() / len(relevant_sum))
-    irrelevance_ratios = irrelevant_sum / (irrelevant_sum.sum() / len(irrelevant_sum))
+    # relevance_ratios = relevant_sum / (relevant_sum.sum() / len(relevant_sum))
+    # irrelevance_ratios = irrelevant_sum / (irrelevant_sum.sum() / len(irrelevant_sum))
     
-    if verbose:
-        print("With relevant and against irrelevant:",
-              len(relevance_ratios[relevance_ratios >= 1].index
-                  .intersection(irrelevance_ratios[irrelevance_ratios < 1].index)))
-        print("With relevant and with irrelevant:",
-              len(relevance_ratios[relevance_ratios >= 1].index
-                  .intersection(irrelevance_ratios[irrelevance_ratios >= 1].index)))
-        print("Against relevant and with irrelevant:",
-              len(relevance_ratios[relevance_ratios < 1].index
-                  .intersection(irrelevance_ratios[irrelevance_ratios >= 1].index)))
-        print("Against relevant and against irrelevant:",
-              len(relevance_ratios[relevance_ratios < 1].index
-                  .intersection(irrelevance_ratios[irrelevance_ratios < 1].index)))
+    # if verbose:
+    #     print("With relevant and against irrelevant:",
+    #           len(relevance_ratios[relevance_ratios >= 1].index
+    #               .intersection(irrelevance_ratios[irrelevance_ratios < 1].index)))
+    #     print("With relevant and with irrelevant:",
+    #           len(relevance_ratios[relevance_ratios >= 1].index
+    #               .intersection(irrelevance_ratios[irrelevance_ratios >= 1].index)))
+    #     print("Against relevant and with irrelevant:",
+    #           len(relevance_ratios[relevance_ratios < 1].index
+    #               .intersection(irrelevance_ratios[irrelevance_ratios >= 1].index)))
+    #     print("Against relevant and against irrelevant:",
+    #           len(relevance_ratios[relevance_ratios < 1].index
+    #               .intersection(irrelevance_ratios[irrelevance_ratios < 1].index)))
 
-    relevant_indexes = (relevance_ratios[relevance_ratios >= 1].index
-                        .intersection(irrelevance_ratios[irrelevance_ratios < 1].index))
+    # relevant_indexes = (relevance_ratios[relevance_ratios >= 1].index
+    #                     .intersection(irrelevance_ratios[irrelevance_ratios < 1].index))
+    # relevant_tweets_df = tweets_df.loc[relevant_indexes]
+
+    def tweet_predicted_relevance(topic_probs):
+        # Weight the topic probs by the relevance of each topic
+        return np.sum(topic_importances * topic_probs.values)
+
+    topics_df["predicted_relevance"] = topics_df[["prob_topic_{}".format(i) for i in range(100)]].apply(tweet_predicted_relevance, axis=1)
+    relevant_indexes = topics_df.sort_values("predicted_relevance", ascending=False).head(int(len(topics_df) * fraction)).index
     relevant_tweets_df = tweets_df.loc[relevant_indexes]
+
     if verbose: print("{} relevant tweets".format(len(relevant_tweets_df)))
 
     return relevant_tweets_df
@@ -146,6 +155,7 @@ if __name__ == '__main__':
                                 start_num_topics=args.start_num_topics,
                                 end_num_topics=args.end_num_topics,
                                 verbose=args.verbose)
+    del topics_df
 
     if args.verbose: print("Writing tweets...")
     tweets_df_no_index = filtered_df.reset_index()
@@ -166,7 +176,6 @@ if __name__ == '__main__':
 
     if args.verbose: print("Filtering concepts...")
     concepts_df = pd.read_csv(os.path.join(args.base_dir, "concepts.csv"))
-    print(concepts_df.tweet_id.dtype, filtered_df.index.dtype)
     concepts_df = concepts_df[concepts_df.tweet_id.isin(filtered_df.index)]
     concepts_df[['tweet_id',
                  'preferred_name',

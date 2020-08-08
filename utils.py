@@ -10,6 +10,7 @@ from gensim.parsing.preprocessing import STOPWORDS
 from gensim.utils import simple_preprocess
 
 import nltk
+from nltk.corpus import wordnet
 from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
 
@@ -124,7 +125,37 @@ def decontract(tweet):
     tweet = re.sub(r"\'m", " am", tweet)
     return tweet
 
-def preprocess_for_lda(tweet):
+# Source: https://medium.com/@gaurav5430/using-nltk-for-lemmatizing-sentences-c1bfff963258
+
+# function to convert nltk tag to wordnet tag
+def nltk_tag_to_wordnet_tag(nltk_tag):
+    if nltk_tag.startswith('J'):
+        return wordnet.ADJ
+    elif nltk_tag.startswith('V'):
+        return wordnet.VERB
+    elif nltk_tag.startswith('N'):
+        return wordnet.NOUN
+    elif nltk_tag.startswith('R'):
+        return wordnet.ADV
+    else:          
+        return None
+
+def lemmatize_sentence(tokens):
+    #tokenize the sentence and find the POS tag for each token
+    nltk_tagged = nltk.pos_tag(tokens)
+    #tuple of (token, wordnet_tag)
+    wordnet_tagged = map(lambda x: (x[0], nltk_tag_to_wordnet_tag(x[1])), nltk_tagged)
+    lemmatized_sentence = []
+    for word, tag in wordnet_tagged:
+        if tag is None:
+            #if there is no available tag, append the token as is
+            lemmatized_sentence.append(word)
+        else:
+            #else use the tag to lemmatize the token
+            lemmatized_sentence.append(lemmatizer.lemmatize(word, tag))
+    return lemmatized_sentence
+
+def preprocess_for_lda(tweet, pos_tag=True):
     """
     Processes a tweet for entry into an LDA topic model. Removes hashtags and
     unnecessary characters, filters out stopwords, tokenizes the tweet into
@@ -145,12 +176,26 @@ def preprocess_for_lda(tweet):
     tokens = simple_preprocess(tweet)
 
     # Lemmatize tokens
-    words = [lemmatizer.lemmatize(word) for word in tokens]
+    if pos_tag:
+        # This uses pos-tags and is slower but more accurate
+        words = lemmatize_sentence(tokens)
+    else:
+        words = [lemmatizer.lemmatize(word) for word in tokens]
 
     # Remove stopwords
     words = [word for word in words if word not in FILTER_WORDS]
 
     return words
+
+def preprocess_keyphrase(keyphrase):
+    """
+    Returns an item representing the given keyphrase, which is a set of words
+    separated by spaces. The returned item is a set of lemmatized tokens, with
+    stopwords excluded.
+    """
+    return set([lemmatizer.lemmatize(w)
+                for w in keyphrase.split()
+                if w not in FILTER_WORDS])
 
 
 #### MetaMap Preprocessing
@@ -233,18 +278,23 @@ def json_to_tweet(tweet):
 ### Word Counts
 
 
-def collect_ngrams(counter, tokens, n=1):
+def collect_ngrams(counter, tokens, n=1, unique=False):
     """
     Adds the n-grams from the given set of tokens to the counter dictionary.
     """
+    seen = set()
     for i in range(len(tokens) - n + 1):
         ngram = " ".join(tokens[i:i + n])
+        if unique:
+            if ngram in seen: continue
+            seen.add(ngram)
         counter[ngram] = counter.get(ngram, 0) + 1
 
-def collect_df_ngram_counts(df, min_count=0, verbose=False):
+def collect_df_ngram_counts(df, min_count=0, unique=False, verbose=False):
     """
     Computes the ngram counts in the given dataframe, and returns them as a
-    list of dictionaries, one for each type of ngram (1-3).
+    list of dictionaries, one for each type of ngram (1-3). If unique is true,
+    only counts one of each unique n-gram per tweet.
     """
     word_counts = [{}, {}, {}]
     counter = tqdm.tqdm(range(len(df))) if verbose else range(len(df))
@@ -252,7 +302,7 @@ def collect_df_ngram_counts(df, min_count=0, verbose=False):
         tweet = df.iloc[i]
         tokens = [t for t in re.split(r"\W", preprocess_for_metamap(tweet["full_text"]).lower()) if t]
         for n, count_set in enumerate(word_counts):
-            collect_ngrams(count_set, tokens, n + 1)
+            collect_ngrams(count_set, tokens, n + 1, unique=unique)
 
     if min_count > 0:
         word_counts = [{w: f for w, f in wc_set.items() if f >= min_count}
