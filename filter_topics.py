@@ -129,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--min_count', type=int,
                         help=('Minimum number of occurrences of ngram in '
                         'relevant tweets (higher saves more memory)'),
-                        default=0, dest='min_count')
+                        default=2, dest='min_count')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         dest='verbose')
 

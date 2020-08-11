@@ -91,7 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--min_count', type=int,
                         help=('Minimum number of occurrences of ngram in '
                         'relevant tweets (higher saves more memory)'),
-                        default=0, dest='min_count')
+                        default=2, dest='min_count')
     args = parser.parse_args()
 
     if not os.path.exists(args.output):

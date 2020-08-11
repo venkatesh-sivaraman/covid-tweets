@@ -4,6 +4,8 @@ import argparse
 from gensim.parsing.preprocessing import strip_multiple_whitespaces
 import re
 import tqdm
+import datetime
+import pickle
 import utils
 
 def deduplicate_tweets(tweets_df):
@@ -21,7 +23,7 @@ def deduplicate_tweets(tweets_df):
                                      .apply(lambda x: x.lower())
                                      .apply(lambda x: ' '.join(re.split(r"\W+", x))))
     return (tweets_df
-            .sort_values("created_at")
+            .sort_values("id")
             .drop_duplicates("semistandardized")
             .drop("semistandardized", axis=1))
 
@@ -35,6 +37,12 @@ if __name__ == '__main__':
                         help='Path to CSV file containing concepts (optionally also pre-merged)')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         dest='verbose')
+    parser.add_argument('-d', '--date', type=str, default=None,
+                        dest='date_cutoff', help='Maximum date to allow in filtered set')
+    parser.add_argument('--min_count', type=int,
+                        help=('Minimum number of occurrences of ngram in '
+                        'relevant tweets (higher saves more memory)'),
+                        default=2, dest='min_count')
 
     args = parser.parse_args()
 
@@ -45,22 +53,42 @@ if __name__ == '__main__':
         os.mkdir(level_dir)
 
     tweets_df = utils.read_tweet_csv(args.tweets)
+
+    if args.date_cutoff:
+        days = pd.to_datetime(tweets_df.created_at, format=utils.CREATED_AT_FORMAT)
+        date_cutoff = datetime.datetime.strptime(args.date_cutoff, '%Y-%m-%d').date()
+        if args.verbose: print("Limiting to {}...".format(date_cutoff))
+        tweets_df = tweets_df.loc[days[days.dt.date <= date_cutoff].index]
+        if args.verbose: print("{} tweets match date filter".format(len(tweets_df)))
+
     if args.verbose: print("Deduplicating...")
     old_count = len(tweets_df)
     tweets_df = deduplicate_tweets(tweets_df)
     if args.verbose: print("Removed {} duplicate tweets".format(old_count - len(tweets_df)))
 
-    if args.verbose: print("Preprocessing for LDA...")
-    texts = []
-    for i in (tqdm.tqdm(range(len(tweets_df))) if args.verbose else range(len(tweets_df))):
-        texts.append(' '.join(utils.preprocess_for_lda(tweets_df.iloc[i].full_text)))
-    tweets_df["standardized_text"] = texts
+    if "standardized_text" in tweets_df.columns:
+        if args.verbose: print("Tweets CSV already has standardized_text, skipping LDA preprocessing.")
+    else:
+        if args.verbose: print("Preprocessing for LDA...")
+        texts = []
+        for i in (tqdm.tqdm(range(len(tweets_df))) if args.verbose else range(len(tweets_df))):
+            texts.append(' '.join(utils.preprocess_for_lda(tweets_df.iloc[i].full_text)))
+        tweets_df["standardized_text"] = texts
 
-    old_count = len(tweets_df)
-    tweets_df = tweets_df[tweets_df.standardized_text.str.len() == 0]
-    print("Removed {} tweets with no non-filtered words".format(old_count - len(tweets_df)))
+        old_count = len(tweets_df)
+        tweets_df = tweets_df[tweets_df.standardized_text.str.len() > 0]
+        print("Removed {} tweets with no non-filtered words".format(old_count - len(tweets_df)))
 
     utils.write_tweet_csv(tweets_df, os.path.join(level_dir, "tweets.csv"))
+
+    # Collect word counts
+    if args.verbose: print("Collecting ngram counts...")
+    word_counts = utils.collect_df_ngram_counts(tweets_df, min_count=args.min_count, verbose=args.verbose)
+    with open(os.path.join(level_dir, "relevant_word_counts.pkl"), "wb") as file:
+        pickle.dump({
+            "tweet_count": len(tweets_df),
+            "word_counts": word_counts
+        }, file)
 
     if args.verbose: print("Filtering concepts...")
     concepts_df = pd.read_csv(args.concepts)
@@ -73,5 +101,4 @@ if __name__ == '__main__':
                  'score',
                  'semtypes']].to_csv(os.path.join(level_dir, "concepts.csv"))
 
-    print(("Please copy or symlink the relevant_word_counts.pkl and "
-           "irrelevant_word_counts.pkl files into the directory {}.").format(level_dir))
+    print("Please copy or symlink the irrelevant_word_counts.pkl files into the directory {} before starting the pipeline.".format(level_dir))

@@ -2,6 +2,7 @@ import re
 import string
 import pandas as pd
 import tqdm
+import datetime
 
 import gensim
 from gensim.parsing.preprocessing import strip_multiple_whitespaces
@@ -37,6 +38,11 @@ def write_tweet_csv(df, path):
     Writes the given dataframe to a CSV file at the given path.
     """
     df.to_csv(path, line_terminator="\n")
+
+CREATED_AT_FORMAT = '%a %b %d %H:%M:%S +0000 %Y'
+
+def get_date(tweet):
+    return datetime.date.strftime(datetime.datetime.strptime(tweet['created_at'], CREATED_AT_FORMAT), '%Y-%m-%d')
 
 
 ### Preprocessing
