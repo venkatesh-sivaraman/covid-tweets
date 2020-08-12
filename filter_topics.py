@@ -124,6 +124,8 @@ if __name__ == '__main__':
                         dest='start_num_topics')
     parser.add_argument('--end_topics', type=int, help='Number of topics to filter to', default=20,
                         dest='end_num_topics')
+    parser.add_argument('--fraction', type=float, help='Take the most relevant fraction of the dataset', default=0.2,
+                        dest='fraction')
     parser.add_argument('--head', type=int, help='Number of tweets limited to in the topic model', default=0,
                         dest='head')
     parser.add_argument('--min_count', type=int,
@@ -152,6 +154,7 @@ if __name__ == '__main__':
     filtered_df = filter_topics(topics_df,
                                 tweets_df,
                                 relevance_info,
+                                fraction=args.fraction,
                                 start_num_topics=args.start_num_topics,
                                 end_num_topics=args.end_num_topics,
                                 verbose=args.verbose)

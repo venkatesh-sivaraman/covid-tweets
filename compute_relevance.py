@@ -81,7 +81,7 @@ def load_concepts(concepts_file, relevance, verbose=False):
     """
     concepts_df = pd.read_csv(concepts_file)
     concepts_df = concepts_df[~pd.isna(concepts_df.trigger_word)]
-    concepts_df = concepts_df[allowed_concepts(concepts_df)]
+    concepts_df = utils.filter_useful_concepts(concepts_df)
 
     # if "english_freq_score" not in concepts_df.columns:
     #     if verbose: print("Loading word counts...")

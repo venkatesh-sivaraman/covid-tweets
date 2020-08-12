@@ -112,6 +112,10 @@ COVID_STOPWORDS = set([
                        'corona',
                        'virus',
                        'covid',
+                       'covidー',
+                       'cov',
+                       'sarscov',
+                       'sarscov2',
                        'amp'])
 FILTER_WORDS = STOPWORDS.union(COVID_STOPWORDS)
 
@@ -121,14 +125,7 @@ def decontract(tweet):
     \'s is removed because we can't disambiguate between possession (Julia's)
     and is (Julia is ...)
     '''
-    tweet = re.sub(r"n\'t", " not", tweet)
-    tweet = re.sub(r"\'re", " are", tweet)
-    tweet = re.sub(r"\'s", "", tweet)
-    tweet = re.sub(r"\'d", " would", tweet)
-    tweet = re.sub(r"\'ll", " will", tweet)
-    tweet = re.sub(r"\'t", " not", tweet)
-    tweet = re.sub(r"\'ve", " have", tweet)
-    tweet = re.sub(r"\'m", " am", tweet)
+    tweet = re.sub(r"\b([A-Za-z]+)'([A-Za-z]+)\b", r"\1\2", tweet)
     return tweet
 
 # Source: https://medium.com/@gaurav5430/using-nltk-for-lemmatizing-sentences-c1bfff963258
@@ -323,11 +320,8 @@ def collect_df_ngram_counts(df, min_count=0, unique=False, verbose=False):
 USEFUL_SEMTYPES = {
     "orch",    "phsu",    "dsyn",
     "patf",    "virs",    "neop",
-    "diap",    "medd",    "fndg",
-    "celc",    "blor",    "bpoc",
-    "prog",    "bmod",    "topp",
-    "mbrt",    "sosy",    "acty",
-    "dora",
+    "diap",    "topp",    "medd",
+    "mbrt",    "sosy",    "bmod"
 }
 
 def filter_useful_concepts(df):
