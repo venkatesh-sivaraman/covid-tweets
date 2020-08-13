@@ -176,7 +176,7 @@ def preprocess_for_lda(tweet, pos_tag=True):
     tweet = strip_multiple_whitespaces(tweet)
 
     # Tokenize, cases everything to lowercase, removes emojis
-    tokens = simple_preprocess(tweet)
+    tokens = simple_preprocess(tweet, max_len=30)
 
     # Lemmatize tokens
     if pos_tag:

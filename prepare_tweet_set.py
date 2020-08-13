@@ -19,11 +19,13 @@ def deduplicate_tweets(tweets_df):
     'my article is featured on the researchgate covid19 community page read it here https t co 6fsvcnsvat'
     """
     tweets_df["semistandardized"] = (tweets_df.full_text
+                                     .apply(utils.preprocess_tweet_text)
                                      .apply(strip_multiple_whitespaces)
                                      .apply(lambda x: x.lower())
                                      .apply(lambda x: ' '.join(re.split(r"\W+", x))))
+    tweets_df["id_num"] = tweets_df["id"].astype(int)
     return (tweets_df
-            .sort_values("id")
+            .sort_values("id_num")
             .drop_duplicates("semistandardized")
             .drop("semistandardized", axis=1))
 

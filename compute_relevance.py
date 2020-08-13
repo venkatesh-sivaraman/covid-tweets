@@ -38,7 +38,10 @@ def load_relevance(input_dir, return_counts=False, verbose=False, baseline_path=
             if baseline_path:
                 # Assume the baseline contains the relevant tweet set too
                 non_doctor_f -= f
-            relevance[word] = (f / doctor_tweet_count + 1e-3) / (non_doctor_f / (non_doctor_tweet_count - doctor_tweet_count) + 1e-3)
+                non_doctor_c = non_doctor_tweet_count - doctor_tweet_count
+            else:
+                non_doctor_c = non_doctor_tweet_count
+            relevance[word] = (f / doctor_tweet_count + 1e-3) / (non_doctor_f / non_doctor_c + 1e-3)
 
     if verbose:
         sorted_ratios = sorted(relevance.items(), key=lambda x: x[1])
@@ -101,8 +104,11 @@ def load_concepts(concepts_file, relevance, verbose=False):
 
     # First compute enrichment ratio for all concepts
     def concept_enrichment(concept_row):
-        trigger = " ".join(re.split(r"\W", concept_row.trigger_word))
-        return (relevance.get(trigger, 0))
+        words = re.split(r"\W", concept_row.trigger_word)
+        if not words:
+            return 0.0
+        trigger = " ".join(words)
+        return relevance.get(trigger, np.mean([relevance.get(w, 0) for w in words]))
     if verbose: print("Computing concept relevance...")
     concepts_df["relevance"] = concepts_df.apply(concept_enrichment, axis=1)
 
