@@ -53,13 +53,23 @@ def filter_topics(topics_df, tweets_df, relevance_info, fraction=0.2, start_num_
     by the tweet ID.
     """
 
+    # relevances = concepts_df.groupby('tweet_id').agg({'relevance': 'sum', 'score': 'sum'})
+    # tweets_with_concept_counts = pd.merge(topics_df, relevances, left_index=True, right_index=True, how='left')
+    # tweets_with_concept_counts.relevance = tweets_with_concept_counts.relevance.fillna(0)
+
     topic_importances = np.array([t["relevance"] for t in relevance_info])
+
+    threshold = (topic_importances.max() - topic_importances.min()) * 0.2 + topic_importances.min()
+    sorted_topics = list(reversed(topic_importances.argsort()))
+    relevant_topics = [t for t in sorted_topics if topic_importances[t] >= threshold]
+    # irrelevant_topics = [t for t in sorted_topics if topic_importances[t] < threshold]
+
     # relevant_topics, irrelevant_topics = find_knee(topic_importances) # , plot=verbose
-    # if verbose: print("Most relevant topics:", relevant_topics)
+    if verbose: print("{} relevant topics".format(len(relevant_topics)))
 
     # # Generate the output dataframe
-    # relevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in relevant_topics]]
-    # relevant_sum = relevant_topic_probs.sum(axis=1)
+    relevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in relevant_topics]]
+    relevant_sum = relevant_topic_probs.sum(axis=1)
     # irrelevant_topic_probs = topics_df[["prob_topic_{}".format(i) for i in irrelevant_topics]]
     # irrelevant_sum = irrelevant_topic_probs.sum(axis=1)
 
@@ -80,17 +90,29 @@ def filter_topics(topics_df, tweets_df, relevance_info, fraction=0.2, start_num_
     #           len(relevance_ratios[relevance_ratios < 1].index
     #               .intersection(irrelevance_ratios[irrelevance_ratios < 1].index)))
 
+    relevant_indexes = relevant_sum[relevant_sum >= len(relevant_topics) / start_num_topics].index
     # relevant_indexes = (relevance_ratios[relevance_ratios >= 1].index
     #                     .intersection(irrelevance_ratios[irrelevance_ratios < 1].index))
+    relevant_tweets_df = tweets_df.loc[relevant_indexes]
+
+    # def tweet_predicted_relevance(topic_probs):
+    #     # Weight the topic probs by the relevance of each topic
+    #     return np.sum(topic_importances * topic_probs.values)
+
+    # topics_df["predicted_relevance"] = topics_df[["prob_topic_{}".format(i) for i in range(100)]].apply(tweet_predicted_relevance, axis=1)
+
+    # pred_relevant_tweets = topics_df.sort_values("predicted_relevance", ascending=False)
+    # total_available_relevance = tweets_with_concept_counts.relevance.sum()
+    # reindexed = tweets_with_concept_counts.reindex(pred_relevant_tweets.index)
+    # reindexed["cumulative_relevance"] = reindexed.relevance.cumsum()
+    # last_index = (reindexed.cumulative_relevance > total_available_relevance * fraction).values.argmax()
+    # print(reindexed.iloc[last_index].cumulative_relevance, total_available_relevance)
+
+    # relevant_indexes = reindexed.iloc[:last_index].index
     # relevant_tweets_df = tweets_df.loc[relevant_indexes]
 
-    def tweet_predicted_relevance(topic_probs):
-        # Weight the topic probs by the relevance of each topic
-        return np.sum(topic_importances * topic_probs.values)
-
-    topics_df["predicted_relevance"] = topics_df[["prob_topic_{}".format(i) for i in range(100)]].apply(tweet_predicted_relevance, axis=1)
-    relevant_indexes = topics_df.sort_values("predicted_relevance", ascending=False).head(int(len(topics_df) * fraction)).index
-    relevant_tweets_df = tweets_df.loc[relevant_indexes]
+    # relevant_indexes = topics_df.sort_values("predicted_relevance", ascending=False).head(int(len(topics_df) * fraction)).index
+    # relevant_tweets_df = tweets_df.loc[relevant_indexes]
 
     if verbose: print("{} relevant tweets".format(len(relevant_tweets_df)))
 

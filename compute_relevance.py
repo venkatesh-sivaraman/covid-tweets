@@ -215,6 +215,38 @@ def compute_tweet_relevance(topics_df, concept_relevances, num_topics=100, verbo
 
     return relevance_summary
 
+def concept_count_topic_relevance(topics_df, concepts_df, num_topics=100, verbose=False):
+    """
+    Computes the relevance of each topic simply using the average number of unique
+    concepts in each tweet.
+    """
+    concept_counts = concepts_df.tweet_id.value_counts().rename("concept_count")
+    tweets_with_concept_counts = pd.merge(topics_df, concept_counts, left_index=True, right_index=True, how='left')
+    tweets_with_concept_counts.concept_count = tweets_with_concept_counts.concept_count.fillna(0)
+
+    # Compute topic importances
+    if verbose: print("Computing topic importances...")
+    relevance_summary = []
+
+    topic_counter = tqdm.tqdm(range(num_topics)) if verbose else range(num_topics)
+    for i in topic_counter:
+        label = "prob_topic_" + str(i)
+        weights = tweets_with_concept_counts[label]
+        weighted_rel = weights * tweets_with_concept_counts.concept_count
+        topic_relevance = weighted_rel.sum() / weights.sum()
+
+        ranked_tweets = tweets_with_concept_counts.sort_values(label, ascending=False).head(1000)
+        relevance_summary.append({
+            "topic_num": i,
+            "relevance": topic_relevance,
+            "tweet_ids": [{
+                "id": n,
+                "prob": round(row[label], 3)
+            } for n, row in ranked_tweets.iterrows()]
+        })
+
+    return relevance_summary
+
 def concept_based_topic_relevance(topics_df, concept_relevances, concepts_df, topic_words, id2word, num_topics=100, verbose=False):
     """
     Computes the relevance of each topic based not on the tweets in the topics,
@@ -252,6 +284,45 @@ def concept_based_topic_relevance(topics_df, concept_relevances, concepts_df, to
     
     return relevance_summary
 
+def no_concept_topic_relevance(topics_df, relevance, verbose=False):
+    """
+    A "control" implementation of topic relevance that doesn't use concepts at
+    all to filter topics.
+    """
+
+    def tweet_word_relevances(tweet):
+        tokens = re.split(r"\W", utils.preprocess_for_metamap(tweet["full_text"]).lower())
+        return np.array([relevance[t] for t in tokens if t and t in relevance])
+
+    total_relevances = []
+    for i in tqdm.tqdm(range(len(topics_df))):
+        tweet = topics_df.iloc[i]
+        tweet_rel = tweet_word_relevances(tweet)
+        total_relevances.append(np.sum(tweet_rel))
+    topics_df["total_relevance"] = total_relevances
+
+    # Compute topic importances
+    if verbose: print("Computing topic importances...")
+    relevance_summary = []
+
+    topic_counter = tqdm.tqdm(range(num_topics)) if verbose else range(num_topics)
+    for i in topic_counter:
+        label = "prob_topic_" + str(i)
+        weights = topics_df[label]
+        weighted_rel = weights * topics_df.total_relevance
+        topic_relevance = weighted_rel.sum() / weights.sum()
+
+        ranked_tweets = topics_df.sort_values(label, ascending=False).head(1000)
+        relevance_summary.append({
+            "topic_num": i,
+            "relevance": topic_relevance,
+            "tweet_ids": [{
+                "id": n,
+                "prob": round(row[label], 3)
+            } for n, row in ranked_tweets.iterrows()]
+        })
+
+    return relevance_summary
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=('Compute topic and tweet relevance.'))
@@ -263,6 +334,10 @@ if __name__ == '__main__':
                         help='Designate a specific topic model to operate on')
     parser.add_argument('--head', type=int, help='Number of tweets limited to in the topic model', default=0,
                         dest='head')
+    parser.add_argument('-cc', '--concept-count', action='store_true', default=False,
+                        dest='concept_count', help='Run control implementation that uses solely concept counts')
+    parser.add_argument('-nc', '--no-concepts', action='store_true', default=False,
+                        dest='no_concepts', help='Run control implementation that uses solely word enrichment scores, no concepts')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         dest='verbose')
     parser.add_argument('-dr', '--dry-run', action='store_true', default=False,
@@ -273,11 +348,12 @@ if __name__ == '__main__':
     if args.verbose: print("Computing relevance...")
     word_counts, _, relevance = load_relevance(args.base_dir, return_counts=True, verbose=args.verbose, baseline_path=args.word_counts_path)
 
-    if args.verbose: print("Loading concepts...")
-    concepts_df, concept_relevances = load_concepts(os.path.join(args.base_dir, "concepts.csv"),
-                                                    relevance, verbose=args.verbose)
-    if not args.dry_run and not args.num_topics:
-        concepts_df.to_csv(os.path.join(args.base_dir, "concepts_with_relevance.csv"))
+    if not args.no_concepts:
+        if args.verbose: print("Loading concepts...")
+        concepts_df, concept_relevances = load_concepts(os.path.join(args.base_dir, "concepts.csv"),
+                                                        relevance, verbose=args.verbose)
+        if not args.dry_run and not args.num_topics:
+            concepts_df.to_csv(os.path.join(args.base_dir, "concepts_with_relevance.csv"))
 
     for fname in sorted(os.listdir(args.base_dir)):
         try:
@@ -293,10 +369,21 @@ if __name__ == '__main__':
                 os.path.join(args.base_dir, "tweets.csv"),
                 head=args.head)
             
-            relevance_summary = compute_tweet_relevance(topics_df,
-                                                        concept_relevances,
-                                                        num_topics=num_topics,
-                                                        verbose=args.verbose)
+            if args.no_concepts:
+                print("=" * 20, "Using control implementation - no concepts")
+                relevance_summary = no_concept_topic_relevance(topics_df,
+                                                               relevance,
+                                                               verbose=args.verbose)
+            elif args.concept_count:
+                print("=" * 20, "Using control implementation - concept counts only")
+                relevance_summary = concept_count_topic_relevance(topics_df,
+                                                                  concepts_df,
+                                                                  verbose=args.verbose)
+            else:
+                relevance_summary = compute_tweet_relevance(topics_df,
+                                                            concept_relevances,
+                                                            num_topics=num_topics,
+                                                            verbose=args.verbose)
             # mallet_model = gensim.models.wrappers.LdaMallet.load(os.path.join(args.base_dir, fname, "model.pkl"))
             # lda_model = malletmodel2ldamodel(mallet_model)
             # topic_words = lda_model.get_topics()
