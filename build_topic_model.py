@@ -91,7 +91,7 @@ def write_tweet_topics(tweets_df, gensim_lda_model, id2word, corpus, output_dir,
 
     file.close()
 
-def build(mallet_path, tweets_df, output_dir, num_topics=100, verbose=False):
+def build(mallet_path, tweets_df, output_dir, num_topics=100, num_iterations=1000, verbose=False):
     """
     Builds a topic model from the given tweets. Writes the following files into
     the output directory:
@@ -135,6 +135,7 @@ def build(mallet_path, tweets_df, output_dir, num_topics=100, verbose=False):
                     mallet_path=os.path.join(mallet_path, "bin", "mallet"),
                     corpus=tf,
                     num_topics=num_topics,
+                    iterations=num_iterations,
                     id2word=id2word)
 
     end_time = datetime.datetime.now()
@@ -161,6 +162,8 @@ if __name__ == '__main__':
                         help='Path to an output directory to create')
     parser.add_argument('--topics', type=int, help='Number of topics', default=100,
                         dest='num_topics')
+    parser.add_argument('--iter', type=int, help='Number of iterations to run LDA', default=1000,
+                        dest='num_iterations')
     parser.add_argument('--head', type=int, help='Number of tweets to limit to', default=0,
                         dest='head')
     parser.add_argument('-v', '--verbose', help='Verbose mode', default=False,
@@ -175,4 +178,4 @@ if __name__ == '__main__':
         tweets_df = tweets_df.head(args.head)
     if args.verbose: print("Read {} tweets".format(len(tweets_df)))
 
-    build(args.mallet, tweets_df, args.out, num_topics=args.num_topics, verbose=args.verbose)
+    build(args.mallet, tweets_df, args.out, num_topics=args.num_topics, num_iterations=args.num_iterations, verbose=args.verbose)
