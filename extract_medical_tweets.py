@@ -10,6 +10,7 @@ import twarc
 import pickle
 import argparse
 import utils
+import datetime
 
 nltk.download("stopwords")
 from nltk.corpus import stopwords
@@ -34,6 +35,8 @@ keywords = re.compile("|".join([
     r"\Winternist", r"surgeon", r"surgery\b",
     r"epidemiolog", r"specialists?\b",
     r"virolog", r"radiolog", r"\Woncolog"]), flags=re.I)
+
+TWEET_DATE_FORMAT = '%Y-%m-%d'
 
 def is_doctor_tweet(tweet):
     """
@@ -64,7 +67,7 @@ def is_doctor_tweet(tweet):
     return False
 
 # Read the tweet IDs that need to be hydrated
-def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size=100000):
+def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size=100000, date_lower=None, date_upper=None):
     """
     Reads tweet IDs from the given gzipped TSV file.
 
@@ -75,8 +78,14 @@ def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size
     """
     current_batch = []
     batch_index = 0
+    known_accept_dates = set()
+    known_reject_dates = set()
+    if date_lower is not None: date_lower = datetime.datetime.strptime(date_lower, TWEET_DATE_FORMAT)
+    if date_upper is not None: date_upper = datetime.datetime.strptime(date_upper, TWEET_DATE_FORMAT)
     with gzip.open(filename, 'rt') as file:
         for i, line in enumerate(file):
+            if i % 1000000 == 0:
+                print("Line {} of file".format(i))
             comps = line.strip().split("\t")
             try:
                 id_str = str(int(comps[0]))
@@ -85,6 +94,25 @@ def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size
             else:
                 if i % num_workers != worker_index:
                     continue
+                
+                # Filter date if applicable
+                if date_lower is not None or date_upper is not None and len(comps) >= 2:
+                    if comps[1] in known_reject_dates:
+                        continue
+                    elif comps[1] not in known_accept_dates:
+                        try:
+                            date = datetime.datetime.strptime(comps[1], TWEET_DATE_FORMAT)
+                        except:
+                            pass
+                        else:
+                            reject = ((date_lower is not None and date < date_lower) or
+                                      (date_upper is not None and date > date_upper))
+                            if reject:
+                                known_reject_dates.add(comps[1])
+                                continue
+                            else:
+                                known_accept_dates.add(comps[1])
+                
                 current_batch.append(id_str)
                 if len(current_batch) == batch_size:
                     if batch_index >= skip_batches:
@@ -97,7 +125,7 @@ def read_tweet_ids(filename, num_workers, worker_index, skip_batches, batch_size
         batch_index += 1
         current_batch = []
 
-def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_workers, worker_index, skip_batches, batch_size=100000):
+def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_workers, worker_index, skip_batches, batch_size=100000, date_lower=None, date_upper=None):
     """
     Performs hydration of incremented batches of tweet IDs and filters them for likely doctor
     status.
@@ -117,7 +145,8 @@ def hydrate_worker(credentials_path, tweet_ids_filename, output_directory, num_w
     t = utils.load_twarc(credentials_path)
 
     for batch_index, batch in read_tweet_ids(tweet_ids_filename, num_workers, worker_index,
-                                             skip_batches, batch_size=batch_size):
+                                             skip_batches, batch_size=batch_size,
+                                             date_lower=date_lower, date_upper=date_upper):
         print("Worker {}, batch index {}".format(worker_index, batch_index))
         path_suffix = "_worker{}_batch{}".format(worker_index, batch_index)
         json_file = open(os.path.join(output_directory, "doctor_tweets" + path_suffix + ".json"), "w")
@@ -181,6 +210,12 @@ if __name__ == '__main__':
                         default=100000, dest='batch_size')
     parser.add_argument('--skip_batches', type=int, help='Number of batches to skip upfront',
                         default=0, dest='skip_batches')
+    parser.add_argument('-ld', '--lower-date', type=str, default=None,
+                        dest='date_lower', help='Earliest date to allow in filtered set (YYYY-MM-DD)')
+    parser.add_argument('-ud', '--upper-date', type=str, default=None,
+                        dest='date_upper', help='Latest date to allow in filtered set (YYYY-MM-DD, inclusive)')
 
     args = parser.parse_args()
-    hydrate_worker(args.creds, args.ids, args.out, args.num_workers, args.worker, args.skip_batches, batch_size=args.batch_size)
+    hydrate_worker(args.creds, args.ids, args.out, args.num_workers,
+                   args.worker, args.skip_batches, batch_size=args.batch_size,
+                   date_lower=args.date_lower, date_upper=args.date_upper)

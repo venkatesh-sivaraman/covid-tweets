@@ -18,7 +18,6 @@ from gensim.models import CoherenceModel
 from gensim.models.wrappers.ldamallet import malletmodel2ldamodel
 
 import nltk
-nltk.download('wordnet')
 from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer 
 from nltk.tokenize import word_tokenize

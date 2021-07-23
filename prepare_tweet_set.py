@@ -39,8 +39,10 @@ if __name__ == '__main__':
                         help='Path to CSV file containing concepts (optionally also pre-merged)')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         dest='verbose')
-    parser.add_argument('-d', '--date', type=str, default=None,
-                        dest='date_cutoff', help='Maximum date to allow in filtered set')
+    parser.add_argument('-ld', '--lower-date', type=str, default=None,
+                        dest='date_lower', help='Earliest date to allow in filtered set')
+    parser.add_argument('-ud', '--upper-date', type=str, default=None,
+                        dest='date_upper', help='Latest date to allow in filtered set (inclusive)')
     parser.add_argument('--min_count', type=int,
                         help=('Minimum number of occurrences of ngram in '
                         'relevant tweets (higher saves more memory)'),
@@ -56,11 +58,16 @@ if __name__ == '__main__':
 
     tweets_df = utils.read_tweet_csv(args.tweets)
 
-    if args.date_cutoff:
+    if args.date_lower or args.date_upper:
         days = pd.to_datetime(tweets_df.created_at, format=utils.CREATED_AT_FORMAT)
-        date_cutoff = datetime.datetime.strptime(args.date_cutoff, '%Y-%m-%d').date()
-        if args.verbose: print("Limiting to {}...".format(date_cutoff))
-        tweets_df = tweets_df.loc[days[days.dt.date <= date_cutoff].index]
+        if args.date_lower:
+            date_cutoff = datetime.datetime.strptime(args.date_lower, '%Y-%m-%d').date()
+            days = days[days.dt.date >= date_cutoff]
+            tweets_df = tweets_df.loc[days.index]
+        if args.date_upper:
+            date_cutoff = datetime.datetime.strptime(args.date_upper, '%Y-%m-%d').date()
+            days = days[days.dt.date <= date_cutoff]
+            tweets_df = tweets_df.loc[days.index]
         if args.verbose: print("{} tweets match date filter".format(len(tweets_df)))
 
     if args.verbose: print("Deduplicating...")
